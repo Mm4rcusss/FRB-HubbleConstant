@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FRB Cosmic Expansion Simulator</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #0f172a; 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px; 
+            margin: 0; 
+        }
+        h2 { margin-bottom: 10px; }
+        p { color: #94a3b8; margin-bottom: 20px; font-size: 14px; }
+        #canvas-container { position: relative; margin-bottom: 20px; }
+        canvas { 
+            background-color: #020617; 
+            border: 1px solid #334155; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); 
+        }
+        .controls { 
+            display: flex; 
+            gap: 15px; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+            background-color: #1e293b; 
+            padding: 20px; 
+            border-radius: 8px; 
+            border: 1px solid #334155; 
+            width: 100%; 
+            max-width: 800px; 
+            box-sizing: border-box; 
+        }
+        button, select { 
+            background-color: #3b82f6; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 6px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            transition: background-color 0.2s; 
+            font-weight: bold; 
+        }
+        button:hover { background-color: #2563eb; }
+        button:disabled { background-color: #475569; cursor: not-allowed; }
+        #reset-btn { background-color: #ef4444; }
+        #reset-btn:hover { background-color: #dc2828; }
+        #dm-counter { 
+            position: absolute; 
+            top: 20px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            font-size: 24px; 
+            font-weight: bold; 
+            background: rgba(15, 23, 42, 0.85); 
+            padding: 10px 20px; 
+            border-radius: 8px; 
+            border: 1px solid #3b82f6; 
+            color: #38bdf8; 
+            z-index: 10; 
+            pointer-events: none; 
+        }
+    </style>
+</head>
+<body>
+
+    <h2>FRB Cosmic Expansion Simulator</h2>
+    <p>Demonstrating the inverse relationship between the Hubble Constant (H₀) and Dispersion Measure (DM)</p>
+
+    <div id="canvas-container">
+        <div id="dm-counter">Dispersion Measure: 0</div>
+        <canvas id="simCanvas" width="800" height="400"></canvas>
+    </div>
+
+    <div class="controls">
+        <select id="expansion-rate">
+            <option value="0">Static Universe (H₀ = 0)</option>
+            <option value="0.003" selected>Slow Expansion (H₀ = 61.5)</option>
+            <option value="0.008">Fast Expansion (H₀ = 73.0)</option>
+        </select>
+        <button id="fire-btn">Fire FRB Signal</button>
+        <button id="reset-btn">Reset</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const fireBtn = document.getElementById('fire-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const rateSelect = document.getElementById('expansion-rate');
+        const counterEl = document.getElementById('dm-counter');
+
+        const numElectrons = 1500;
+        let electrons = [];
+        let animationId;
+        let isFiring = false;
+        let pulseX = 0;
+        let dmCount = 0;
+        
+        // Define the shortened pulse geometry
+        const pulseHeightRatio = 0.25; // Pulse covers 25% of the screen height
+        const pulseHeight = canvas.height * pulseHeightRatio;
+        const pulseTop = (canvas.height / 2) - (pulseHeight / 2);
+        const pulseBottom = (canvas.height / 2) + (pulseHeight / 2);
+
+        // Setup initial electrons
+        function initElectrons() {
+            electrons = [];
+            for(let i=0; i<numElectrons; i++) {
+                electrons.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    hit: false
+                });
+            }
+            dmCount = 0;
+            pulseX = 0;
+            counterEl.innerText = `Dispersion Measure: ${dmCount}`;
+            draw();
+        }
+
+        // Main animation loop
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const expRate = parseFloat(rateSelect.value);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Move Pulse
+            if (isFiring) {
+                pulseX += 5; // Speed of light
+            }
+
+            // Draw and update electrons
+            electrons.forEach(e => {
+                // Expansion Physics: Galaxies/electrons drift away from the center
+                if (isFiring && expRate > 0) {
+                    let dx = e.x - centerX;
+                    let dy = e.y - centerY;
+                    e.x += dx * expRate;
+                    e.y += dy * expRate;
+                }
+
+                // Check collision ONLY if within the short vertical pulse bounds
+                if (isFiring && !e.hit && e.x > 0 && e.x < canvas.width && e.y > 0 && e.y < canvas.height) {
+                    if (Math.abs(e.x - pulseX) < 5 && e.y >= pulseTop && e.y <= pulseBottom) {
+                        e.hit = true;
+                        dmCount++;
+                        counterEl.innerText = `Dispersion Measure: ${dmCount}`;
+                    }
+                }
+
+                // Render electron
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.hit ? 4 : 2, 0, Math.PI * 2);
+                ctx.fillStyle = e.hit ? '#38bdf8' : '#475569';
+                ctx.fill();
+            });
+
+            // Draw the Shortened FRB Pulse
+            if (isFiring) {
+                ctx.beginPath();
+                ctx.moveTo(pulseX, pulseTop);
+                ctx.lineTo(pulseX, pulseBottom);
+                ctx.strokeStyle = '#ec4899';
+                ctx.lineWidth = 4;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ec4899';
+                ctx.stroke();
+                ctx.shadowBlur = 0; // Reset
+            }
+
+            // Stop condition
+            if (pulseX > canvas.width) {
+                isFiring = false;
+                fireBtn.disabled = false;
+                rateSelect.disabled = false;
+                return; // End animation loop
+            }
+
+            if (isFiring) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            electrons.forEach(e => {
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#475569';
+                ctx.fill();
+            });
+        }
+
+        fireBtn.addEventListener('click', () => {
+            if (isFiring) return;
+            isFiring = true;
+            fireBtn.disabled = true;
+            rateSelect.disabled = true;
+            animate();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            cancelAnimationFrame(animationId);
+            isFiring = false;
+            fireBtn.disabled = false;
+            rateSelect.disabled = false;
+            initElectrons();
+        });
+
+        initElectrons();
+    </script>
+</body>
+</html>
